@@ -9,8 +9,7 @@ module Padrino
   #
   class Mounter
     DEFAULT_CASCADE = [404, 405]
-    class MounterException < RuntimeError
-    end
+    class MounterException < RuntimeError; end
 
     attr_accessor :name, :uri_root, :app_file, :app_class, :app_root, :app_obj, :app_host, :cascade
 
@@ -90,7 +89,7 @@ module Padrino
       app_obj.set :public_folder,  Padrino.root('public', app_data.uri_root) unless File.exist?(app_obj.public_folder)
       app_obj.set :static,         File.exist?(app_obj.public_folder) if app_obj.nil?
       app_obj.set :cascade,        app_data.cascade
-      app_obj.setup_application! # Initializes the app here with above settings.
+      app_obj.setup_application!
       router.map(:to => app_obj, :path => app_data.uri_root, :host => app_data.app_host)
     end
 
@@ -108,7 +107,7 @@ module Padrino
     #   Array of routes.
     #
     def named_routes
-      app_obj.routes.map { |route|
+      app_obj.routes.map do |route|
         route_name = route.name.to_s
         route_name = 
           if route.controller
@@ -122,7 +121,7 @@ module Padrino
         original_path = route.original_path.is_a?(Regexp) ? route.original_path.inspect : route.original_path
         full_path = File.join(uri_root, original_path)
         OpenStruct.new(:verb => request_method, :identifier => route.name, :name => name_array, :path => full_path)
-      }.compact
+      end.compact
     end
 
     ##
@@ -140,7 +139,7 @@ module Padrino
     #
     def app_constant
       klass = Object
-      for piece in app_class.split("::")
+      app_class.split("::").each do |piece|
         piece = piece.to_sym
         if klass.const_defined?(piece, false)
           klass = klass.const_get(piece)
@@ -152,6 +151,7 @@ module Padrino
     end
 
     protected
+
     ##
     # Locates and requires the file to load the app constant.
     #
@@ -171,15 +171,18 @@ module Padrino
       candidates << app_constant.app_file if app_constant.respond_to?(:app_file) && File.exist?(app_constant.app_file.to_s)
       candidates << Padrino.first_caller if File.identical?(Padrino.first_caller.to_s, Padrino.called_from.to_s)
       candidates << Padrino.mounted_root(name.downcase, "app.rb")
-      simple_name = name.split("::").last.downcase
-      mod_name = name.split("::")[0..-2].join("::")
-      Padrino.modules.each do |mod|
-        if mod.name == mod_name
-          candidates << mod.root(simple_name, "app.rb")
-        end
-      end
+      candidates += gemified_module_apps
       candidates << Padrino.root("app", "app.rb")
-      candidates.find { |candidate| File.exist?(candidate) }
+      candidates.find{ |candidate| File.exist?(candidate) }
+    end
+
+    def gemified_module_apps
+      module_name = name.split("::")
+      application_name = module_name.pop.downcase
+      module_name = module_name.join("::")
+      Padrino.modules.
+        select{ |gemified_module| gemified_module.name == module_name }.
+        map{ |gemified_module| gemified_module.root(application_name, "app.rb") }
     end
 
     ###
